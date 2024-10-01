@@ -1,0 +1,102 @@
+function [cn,ceqn] = mycon(x)
+    Pwing_output=Pwing(x(5),x(7));%2 outputs (mtow,ss)
+    Pmotor_output=Pmotor(x(8),x(9)); % 2 outputs (rpm,eta_motorm)
+    Pgearbox_output=Pgearbox(x(1),x(2),x(5),x(7),x(8),x(9),x(10)); % 7 outputs (rest 7 outputs)
+    %Pprop_output=Pprop(x(1),x(2),x(3),x(4),x(6),x(10)); % 3 outputs
+    %misc.range=rangei;
+   
+        rangei=50000;
+        misc.range=rangei;
+        misc.vehicle='tiltwing';
+        misc.payload=300;
+        rProp = x(1);
+        V = x(2);
+        mBattery = x(3);
+        mMotors = x(4);
+        mtow = x(5);
+        Ereserve=x(6);
+        S=x(7);
+        rpm=x(8);
+        eta_motor=x(9);
+        m_gb=x(10);
+        vehicle=misc.vehicle;
+        range=misc.range;
+        payload=misc.payload;
+
+        ceqn(1) = diffc(Pwing_output(1),mtow);  %from w
+        ceqn(2) = diffc(Pwing_output(2),S); %r
+        ceqn(3) = diffc(  Pmotor_output(1),rpm);   %w
+        ceqn(4) = diffc( Pmotor_output(2),eta_motor);  %w
+        ceqn(5) = diffc( Pgearbox_output(1),rProp);  %c
+        ceqn(6) = diffc(Pgearbox_output(2),V);    %w     
+        ceqn(7) = diffc(Pgearbox_output(3),mtow);  %w
+        ceqn(8) = diffc(Pgearbox_output(4),S);  %c
+        ceqn(9) = diffc(Pgearbox_output(5),rpm);    %w   
+        ceqn(10) = diffc(Pgearbox_output(6),eta_motor);    %w  
+        ceqn(11) = diffc(Pgearbox_output(7),m_gb);    %w
+        
+        % Assumed values
+        batteryEnergyDensity = 230; % Expected pack energy density in 3-5 years [Wh/kg]
+        motorPowerDensity = 5;
+        dischargeDepthReserve = 0.95; % Can only use 95% of battery energy in reserve mission
+        
+       [~,~,hoverOutput,cruiseOutput] = simpleMission(vehicle,rProp,V,mtow*9.8,range,S,rpm,eta_motor,m_gb);
+        
+        
+        
+        % Mass estimate
+        mass = configWeight(vehicle,rProp,mBattery,mMotors,mtow,hoverOutput,cruiseOutput,payload,m_gb);
+        
+        
+
+        
+
+        
+        % Constraint on MTOW
+        cn(1) = mass.W - mtow * 9.8;
+        
+        
+        
+        % Battery sizing
+        [EReserve,~,~,~,~] = reserveMission(vehicle,rProp,V,mtow*9.8,range,S,rpm,eta_motor,m_gb);
+        cn(2) = EReserve - mBattery * batteryEnergyDensity * dischargeDepthReserve / 1000;
+        
+%         % motor power density
+%         cn(4) = hoverOutput.PMax / 1000 - mMotors * motorPowerDensity;
+        
+        
+        %motor sizing based on torque
+        torq=0.74*(hoverOutput.PMax/8)/(rpm*2*pi/60);
+        lb2kg = 0.453592;   
+        cn(3) = 0.3928*(torq^0.8587)*lb2kg*8 - mMotors;
+        
+        
+%         % Constraint on tip speed
+%         tip_mach=0.65;
+%         omega=tip_mach*340.294/rProp;
+%         rpm_max=omega*60/(2*pi);
+%         cn(4)=rpm-rpm_max;
+%         cn(4)=0;
+        
+
+        
+        % Ereserve constraint
+        ceqn(12)=abs (EReserve-x(6)); 
+    end
+function[c,ceq]= constraints_Sys(x)
+Sub_system_1_output=smbo_1(x(1),x(2),x(3));
+Sub_system_2_output=smbo_2(x(1),x(2),x(3));
+x2=Sub_system_1_output(2);
+x3=Sub_system_1_output(3);
+x4=Sub_system_2_output(2);
+x5=Sub_system_2_output(3);
+x6=Sub_system_1_output(4);
+x7=Sub_system_2_output(4);
+sigma1=Sub_system_1_output(1); %as sigma1* means that sub system er solution which is sigma1
+sigma2=Sub_system_2_output(1);
+%ceq(1)=0.5*(((sigma1-x(1)))^2+((sigma1^2+2*x2-x3+2*sqrt(x(3)))-x(2))^2);% xs is x(1) and t1 is x(2) and t2 is x(3)
+%ceq(2)=0.5*(((sigma2-x(1)))^2+((sigma2*x4+x4^2+x5+x(2))-x(3))^2);
+ceq(1)=x6;
+ceq(2)=x7;
+c=[];
+end
